@@ -1,15 +1,16 @@
 import glob
 from obspy.core.event import read_events
 from obspy.clients.fdsn import Client
-import tkinter as tk
-from tkinter import ttk
 import matplotlib.pyplot as plt
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-import matplotlib.pyplot as plt
-from matplotlib.widgets import SpanSelector, RectangleSelector
+from matplotlib.widgets import SpanSelector
+from obspy.geodetics import gps2dist_azimuth
 
 
-# Function to be called when the SpanSelector is used
+def calculate_distance(station):
+    _, _, distance = gps2dist_azimuth(latitude, longitude, station.latitude, station.longitude)
+    return distance
+
+
 def onselect(vmin, vmax):
     for ax in axs:
         ax.set_xlim(vmin, vmax)
@@ -38,43 +39,35 @@ client = Client("TEXNET")
 starttime = origin_time - 60  # 1 minute before the origin time
 endtime = origin_time + 120  # 2 minutes after the origin time
 
-# List of stations with their network codes from the 'TX' network
-stations = [
-    ("PB08", "TX"),
-    ("VHRN", "TX"),
-    ("PB01", "TX"),
-    ("PB05", "TX"),
-    ("PB11", "TX"),
-    ("PB06", "TX"),
-    ("PB10", "TX"),
-    ("PB12", "TX")
-]
+inventory = client.get_stations(network="TX")
 
-# Retrieve the waveforms for each station
+# Sort the stations by distance to the event
+stations = sorted(inventory[0], key=calculate_distance)
+# Retrieve the waveforms for the 10 closest stations
 waveforms = []
-for station, network in stations:
+for station in stations[:10]:
     try:
-        st = client.get_waveforms(network=network, station=station, location="*", channel="*", starttime=starttime,
+        st = client.get_waveforms(network="TX", station=station.code, location="*", channel="*", starttime=starttime,
                                   endtime=endtime)
         waveforms.append(st)
     except Exception as e:
-        print(f"Could not retrieve data for station {station}: {e}")
+        print(f"Could not retrieve data for station {station.code}: {e}")
 
 # Print retrieved waveforms
 for wf in waveforms:
     print(wf)
 
 # Create a new figure
-fig, axs = plt.subplots(len(waveforms[:5]))
+fig, axs = plt.subplots(len(waveforms[:10]), figsize=(6, 20))
 
 # Add a subplot for each waveform
-for i, wf in enumerate(waveforms[:5]):
+for i, wf in enumerate(waveforms[:10]):
     # Assume that the Z channel data is in the first trace
     axs[i].plot(wf[0].times("matplotlib"), wf[0].data)
     axs[i].set_title(f"Station: {wf[0].stats.station}")
 
 # Add a SpanSelector to the last Axes
 span = SpanSelector(axs[-1], onselect, 'horizontal', useblit=True)
-
+fig.subplots_adjust(hspace=1)
 # Show the plot
 plt.show()
