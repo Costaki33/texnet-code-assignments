@@ -1,7 +1,7 @@
 import glob
-from obspy.core.event import read_events
-from obspy.clients.fdsn import Client
 import matplotlib.pyplot as plt
+from obspy.clients.fdsn import Client
+from obspy.core.event import read_events
 from matplotlib.widgets import SpanSelector
 from obspy.geodetics import gps2dist_azimuth
 
@@ -21,7 +21,7 @@ def onselect(vmin, vmax):
 event = read_events(
     "/home/skevofilaxc/PycharmProjects/texnet-code-assignments/interact_seismic_stations/texnet2023vxae.xml")
 
-# Extract the event information
+# Extract event information
 origin = event[0].origins[0]
 origin_time = origin.time
 latitude = origin.latitude
@@ -32,42 +32,48 @@ print(f"Origin time: {origin_time}")
 print(f"Location: ({latitude}, {longitude})")
 print(f"Magnitude: {magnitude}")
 
-# Initialize the TEXNET client
-client = Client("TEXNET")
+client = Client("TEXNET")  # set client to TEXNET
 
-# Define the time window for data retrieval
 starttime = origin_time - 60  # 1 minute before the origin time
 endtime = origin_time + 120  # 2 minutes after the origin time
 
-inventory = client.get_stations(network="TX")
+inventory = client.get_stations(network="TX")  # network is TX
 
-# Sort the stations by distance to the event
+# Sort the stations by distance to event
 stations = sorted(inventory[0], key=calculate_distance)
-# Retrieve the waveforms for the 10 closest stations
+
+# Save waveforms to list for plotting
 waveforms = []
 for station in stations[:10]:
     try:
         st = client.get_waveforms(network="TX", station=station.code, location="*", channel="*", starttime=starttime,
                                   endtime=endtime)
+        st = st.select(channel='*Z')  # Keep only Z channel
         waveforms.append(st)
     except Exception as e:
         print(f"Could not retrieve data for station {station.code}: {e}")
 
-# Print retrieved waveforms
-for wf in waveforms:
-    print(wf)
-
-# Create a new figure
-fig, axs = plt.subplots(len(waveforms[:10]), figsize=(6, 20))
+# Create main figure
+fig, axs = plt.subplots(len(waveforms[:10]), figsize=(8, 60))
 
 # Add a subplot for each waveform
 for i, wf in enumerate(waveforms[:10]):
     # Assume that the Z channel data is in the first trace
     axs[i].plot(wf[0].times("matplotlib"), wf[0].data)
-    axs[i].set_title(f"Station: {wf[0].stats.station}")
 
-# Add a SpanSelector to the last Axes
+    for station in stations:
+        if station.code == wf[0].stats.station:
+            break
+    else:
+        continue  # Skip this station if we didn't find a corresponding station
+    print(f"Station Lat: {station.latitude}\nStation Lon: {station.longitude}\n")
+    # Calculate the distance from the event
+    _, _, distance = gps2dist_azimuth(latitude, longitude, station.latitude, station.longitude)
+
+    axs[i].set_title(f"Station: {wf[0].stats.station}, Distance: {round(distance, 2)} m")
+
 span = SpanSelector(axs[-1], onselect, 'horizontal', useblit=True)
-fig.subplots_adjust(hspace=1)
+fig.subplots_adjust(hspace=1.5)
+
 # Show the plot
 plt.show()
