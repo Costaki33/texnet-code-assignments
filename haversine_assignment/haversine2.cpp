@@ -27,7 +27,7 @@ double haversine(double lat1, double lon1, double lat2, double lon2, std::string
 
 int main() {
     // Sample
-    double lat1 = 51.5074, lon1 = 0.1278; // London, England 
+    double lat1 = 51.5074, lon1 = -0.1278; // London, England
     double lat2 = 48.8566, lon2 = 2.3522;  // Paris, France
 
     double distance_miles = haversine(lat1, lon1, lat2, lon2, "mi");
