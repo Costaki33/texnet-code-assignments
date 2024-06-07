@@ -1,12 +1,16 @@
 #include <iostream>
 #include <cmath>
 
+double deg_to_rad(double degree) {
+    return degree * M_PI / 180;
+}
+
 double haversine(double lat1, double lon1, double lat2, double lon2, std::string unit = "km") {
     // Degrees to radians
-    lat1 = lat1 * M_PI / 180;
-    lon1 = lon1 * M_PI / 180;
-    lat2 = lat2 * M_PI / 180;
-    lon2 = lon2 * M_PI / 180;
+    lat1 = deg_to_rad(lat1);
+    lon1 = deg_to_rad(lon1);
+    lat2 = deg_to_rad(lat2);
+    lon2 = deg_to_rad(lon2);
 
     // Haversine formula
     double dlon = lon2 - lon1;
