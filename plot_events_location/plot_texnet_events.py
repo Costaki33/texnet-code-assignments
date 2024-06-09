@@ -1,7 +1,7 @@
 import os
 import argparse
-from obspy import read_events
 import matplotlib.pyplot as plt
+from obspy import read_events
 
 
 def main():
