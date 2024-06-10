@@ -1,79 +1,81 @@
-import glob
+import argparse
 import matplotlib.pyplot as plt
 from obspy.clients.fdsn import Client
 from obspy.core.event import read_events
-from matplotlib.widgets import SpanSelector
-from obspy.geodetics import gps2dist_azimuth
+from obspy.geodetics import locations2degrees
 
 
-def calculate_distance(station):
-    _, _, distance = gps2dist_azimuth(latitude, longitude, station.latitude, station.longitude)
-    return distance
+def calculateDistance(station, latitude, longitude):
+    """
+    Function calculates the distance between a station and the earthquake epicenter
+    :param station: Station object that contains obspy information about the station
+    :param latitude: Latitude of the earthquake
+    :param longitude: Longitude of the earthquake
+    :return: distance calculated in degrees
+    """
+    distance = locations2degrees(latitude, longitude, station.latitude, station.longitude)
+    return distance  # in degrees
 
 
-def onselect(vmin, vmax):
-    for ax in axs:
-        ax.set_xlim(vmin, vmax)
-    fig.canvas.draw_idle()
+def main(file_path):
+    event = read_events(file_path)  # Read the QuakeML file provided by user
 
+    # Extract event information
+    origin = event[0].origins[0]
+    event_name = str(event[0].resource_id).split("/")[-1]
+    origin_time = origin.time
+    latitude = origin.latitude
+    longitude = origin.longitude
+    magnitude = event[0].magnitudes[0].mag
 
-# Read the QuakeML file
-event = read_events(
-    "/home/skevofilaxc/PycharmProjects/texnet-code-assignments/interact_seismic_stations/texnet2023vxae.xml")
+    print(f"Event name: {event_name}")
+    print(f"Origin time: {origin_time}")
+    print(f"Location: ({latitude}, {longitude})")
+    print(f"Magnitude: {magnitude}")
 
-# Extract event information
-origin = event[0].origins[0]
-origin_time = origin.time
-latitude = origin.latitude
-longitude = origin.longitude
-magnitude = event[0].magnitudes[0].mag
+    # Set up requested requirements and dependencies
+    start_time = origin_time - 60  # 1 minute before the origin time
+    end_time = origin_time + 120  # 2 minutes after the origin time
+    client = Client("TEXNET")  # Set client to TEXNET
+    inventory = client.get_stations(network="TX")  # Network is TX
 
-print(f"Origin time: {origin_time}")
-print(f"Location: ({latitude}, {longitude})")
-print(f"Magnitude: {magnitude}")
+    # Sort the stations by distance to event
+    stations = sorted(inventory[0], key=lambda station: calculateDistance(station, latitude, longitude))
 
-client = Client("TEXNET")  # set client to TEXNET
+    waveforms = []  # Save waveforms data as a list for plotting
+    unique_stations = set()  # Store unique stations using set for uniqueness control
 
-starttime = origin_time - 60  # 1 minute before the origin time
-endtime = origin_time + 120  # 2 minutes after the origin time
-
-inventory = client.get_stations(network="TX")  # network is TX
-
-# Sort the stations by distance to event
-stations = sorted(inventory[0], key=calculate_distance)
-
-# Save waveforms to list for plotting
-waveforms = []
-for station in stations[:10]:
-    try:
-        st = client.get_waveforms(network="TX", station=station.code, location="*", channel="*", starttime=starttime,
-                                  endtime=endtime)
-        st = st.select(channel='*Z')  # Keep only Z channel
-        waveforms.append(st)
-    except Exception as e:
-        print(f"Could not retrieve data for station {station.code}: {e}")
-
-# Create main figure
-fig, axs = plt.subplots(len(waveforms[:10]), figsize=(8, 60))
-
-# Add a subplot for each waveform
-for i, wf in enumerate(waveforms[:10]):
-    # Assume that the Z channel data is in the first trace
-    axs[i].plot(wf[0].times("matplotlib"), wf[0].data)
-
+    # Collect first 10 stations with waveform data and save to list for plotting
     for station in stations:
-        if station.code == wf[0].stats.station:
+        if len(waveforms) >= 10:
             break
-    else:
-        continue  # Skip this station if we didn't find a corresponding station
-    print(f"Station Lat: {station.latitude}\nStation Lon: {station.longitude}\n")
-    # Calculate the distance from the event
-    _, _, distance = gps2dist_azimuth(latitude, longitude, station.latitude, station.longitude)
+        try:
+            st = client.get_waveforms(network="TX", station=station.code, location="*", channel="*Z",
+                                      starttime=start_time,
+                                      endtime=end_time)
+            if st and len(st) and station.code not in unique_stations:
+                waveforms.append(st)
+                unique_stations.add(station.code)
+        except Exception as e:
+            print(f"\nCould not retrieve data for station {station.code}: {e}")
 
-    axs[i].set_title(f"Station: {wf[0].stats.station}, Distance: {round(distance, 2)} m")
+    # Create main plot figure
+    fig, axs = plt.subplots(len(waveforms), figsize=(8, len(waveforms) * 6))
 
-span = SpanSelector(axs[-1], onselect, 'horizontal', useblit=True)
-fig.subplots_adjust(hspace=1.5)
+    # Add subplot for each waveform
+    for i, (wf, station) in enumerate(zip(waveforms, stations)):
+        axs[i].plot(wf[0].times("matplotlib"), wf[0].data)
+        axs[i].set_title(f"Station: {station.code}, Distance from epicenter: "
+                         f"{round(calculateDistance(station, latitude, longitude), 2)} degrees")
 
-# Show the plot
-plt.show()
+    fig.subplots_adjust(hspace=1.5)
+    fig.suptitle(f"{event_name} Station Data", y=.93, fontsize=16)
+    plt.show()
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Plot seismic waveforms for an event")
+    parser.add_argument("file_path", type=str, help="Path to the QuakeML file")
+    args = parser.parse_args()
+
+    main(args.file_path)
